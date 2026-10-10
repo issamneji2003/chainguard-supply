@@ -81,6 +81,11 @@ Le script de pipeline retourne des codes de sortie normalisés pour s'intégrer 
 
 2 (REVIEW) : Situation ambigüe nécessitant une revue humaine ou une dérogation de sécurité.
 
+## 🧪 Démonstration & Scénarios de Sécurité
+
+* **Quand tout va bien (`ALLOW` - Code 0) :** L'image Docker est construite, les rapports et la signature cryptographique sont valides. Le pipeline autorise le déploiement.
+* **En cas d'alerte (`DENY` - Code 1) :** Si un élément de sécurité manque ou est invalide, le système bloque tout immédiatement (règle *Fail-Closed*).
+
 👤 Auteur
 Issam Neji — Étudiant en ingénierie informatique à ESPRIT (Spécialisation cybersecurity & Cloud).
 
