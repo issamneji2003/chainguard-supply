@@ -45,13 +45,13 @@ jobs:
 
       - name: Générer une paire de clés Cosign (mode test)
         run: |
-          cosign generate-key-pair --output-key-prefix cosign.key
+          cosign generate-key-pair --output-key-prefix cosign
         env:
           COSIGN_PASSWORD: ""
 
       - name: Signer numériquement le SBOM généré
         run: |
-          cosign sign-blob --key cosign.key.priv reports/sbom.json --output reports/sbom.json.sig --yes
+          cosign sign-blob --key cosign.key reports/sbom.json --output-signature reports/sbom.json.sig --yes
         env:
           COSIGN_PASSWORD: ""
 
