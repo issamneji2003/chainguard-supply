@@ -46,13 +46,9 @@ jobs:
         run: |
           mkdir -p reports
 
-          # Génération non-interactive de la paire de clés Cosign sans mot de passe
-          COSIGN_PASSWORD="" cosign generate-key-pair --yes
+          # Génération de la paire de clés Cosign en contournant l'invite interactive
+          echo "" | COSIGN_PASSWORD="" cosign generate-key-pair
           
-          # Vérification de la présence des clés générées
-          if [ -f cosign.pub ]; then echo "cosign.pub généré avec succès"; fi
-          if [ -f cosign.key ]; then echo "cosign.key généré avec succès"; fi
-
           # Création des fichiers de rapport requis par les Quality Gates
           echo '{"artifacts": []}' > reports/sbom.json
           echo '{"Results": []}' > reports/trivy-report.json
