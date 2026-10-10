@@ -12,10 +12,10 @@ jobs:
 
     steps:
       - name: Checkout du code source
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Configuration de l'environnement Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
@@ -28,10 +28,9 @@ jobs:
         run: |
           python -m pytest tests/
 
-      - name: Préparation des artefacts de sécurité (Mock / Simulation CI)
+      - name: Préparation des artefacts de sécurité (Simulation CI)
         run: |
           mkdir -p reports
-          # Création d'un fichier de signature de simulation pour valider le pipeline en CI
           echo "mock-signature-content" > reports/sbom.json.sig
 
       - name: Exécution du pipeline d'orchestration ChainGuard
@@ -39,7 +38,7 @@ jobs:
           python run_pipeline.py
 
       - name: Publication du rapport de synthèse (Artifact)
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: always()
         with:
           name: security-summary-report
