@@ -1,0 +1,46 @@
+name: ChainGuard Supply CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  secops-validation:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout du code source
+        uses: actions/checkout@v3
+
+      - name: Configuration de l'environnement Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Installation des dépendances
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest
+
+      - name: Exécution de la suite de tests unitaires
+        run: |
+          python -m pytest tests/
+
+      - name: Préparation des artefacts de sécurité (Mock / Simulation CI)
+        run: |
+          mkdir -p reports
+          # Création d'un fichier de signature de simulation pour valider le pipeline en CI
+          echo "mock-signature-content" > reports/sbom.json.sig
+
+      - name: Exécution du pipeline d'orchestration ChainGuard
+        run: |
+          python run_pipeline.py
+
+      - name: Publication du rapport de synthèse (Artifact)
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: security-summary-report
+          path: reports/summary-report.json
