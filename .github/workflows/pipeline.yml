@@ -28,6 +28,17 @@ jobs:
         run: |
           python -m pytest tests/
 
+      - name: Création d'un Dockerfile minimal pour les tests CI
+        run: |
+          if [ ! -f Dockerfile ]; then
+            echo "FROM alpine:latest" > Dockerfile
+            echo "CMD [\"echo\", \"Hello ChainGuard\"]" >> Dockerfile
+          fi
+
+      - name: Construction de l'image Docker locale
+        run: |
+          docker build -t chainguard-app:latest .
+
       - name: Préparation des artefacts de sécurité (Simulation CI)
         run: |
           mkdir -p reports
