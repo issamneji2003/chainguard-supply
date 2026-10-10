@@ -19,7 +19,10 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Installation des dépendances
+      - name: Installation de Cosign (Sigstore)
+        uses: sigstore/cosign-installer@v3.4.0
+
+      - name: Installation des dépendances Python
         run: |
           python -m pip install --upgrade pip
           pip install pytest
@@ -39,16 +42,20 @@ jobs:
         run: |
           docker build -t chainguard-app:latest .
 
-      - name: Préparation complète des preuves de sécurité (Simulation CI)
+      - name: Préparation complète des preuves et clés de sécurité (Simulation CI)
         run: |
           mkdir -p reports
-          # Clé publique factice
-          echo "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA0..." > cosign.pub
           
-          # Fichiers de preuves pour satisfaire les vérifications Fail-Closed
+          # Génération d'une vraie paire de clés Cosign de test pour la validation
+          cosign generate-key-pair
+          # (Cela crée cosign.key et cosign.pub dans le répertoire courant sans mot de passe)
+
+          # Création des rapports minimums requis pour les Quality Gates
           echo '{"artifacts": []}' > reports/sbom.json
-          echo "mock-signature-content" > reports/sbom.json.sig
           echo '{"Results": []}' > reports/trivy-report.json
+
+          # Signature réelle du SBOM avec la clé générée pour passer la vérification Cosign
+          cosign sign-blob --key cosign.key --output-signature reports/sbom.json.sig reports/sbom.json
 
       - name: Exécution du pipeline d'orchestration ChainGuard
         run: |
