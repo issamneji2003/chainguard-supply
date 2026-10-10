@@ -31,7 +31,7 @@ jobs:
         run: |
           python -m pytest tests/
 
-      - name: Création d'un Dockerfile minimal pour les tests CI
+      - name: Création d'un Dockerfile minimal pour l'environnement CI
         run: |
           if [ ! -f Dockerfile ]; then
             echo "FROM alpine:latest" > Dockerfile
@@ -45,26 +45,25 @@ jobs:
       - name: Préparation complète des preuves et clés de sécurité (Simulation CI)
         run: |
           mkdir -p reports
-          
-          # Génération d'une paire de clés Cosign de test
-          cosign generate-key-pair --output-key-prefix cosign-key --yes || true
-          # Si les clés s'appellent cosign-key.key et cosign-key.pub, on les renomme ou on adapte :
-          if [ -f cosign-key.pub ]; then cp cosign-key.pub cosign.pub; fi
-          if [ -f cosign-key.key ]; then cp cosign-key.key cosign.key; fi
 
-          # Création des rapports requis
+          # Génération non-interactive de la paire de clés Cosign sans mot de passe
+          COSIGN_PASSWORD="" cosign generate-key-pair --yes
+          
+          # Vérification de la présence des clés générées
+          if [ -f cosign.pub ]; then echo "cosign.pub généré avec succès"; fi
+          if [ -f cosign.key ]; then echo "cosign.key généré avec succès"; fi
+
+          # Création des fichiers de rapport requis par les Quality Gates
           echo '{"artifacts": []}' > reports/sbom.json
           echo '{"Results": []}' > reports/trivy-report.json
 
-          # Signature du SBOM avec gestion explicite
-          cosign sign-blob --key cosign.key --output-signature reports/sbom.json.sig reports/sbom.json --yes || echo "Erreur signature cosign"
+          # Signature effective du fichier SBOM
+          COSIGN_PASSWORD="" cosign sign-blob --key cosign.key --output-signature reports/sbom.json.sig reports/sbom.json --yes
 
-      - name: Debug - Vérification des fichiers générés
+      - name: Debug - Vérification de la structure du dossier reports
         run: |
-          echo "=== Contenu de la racine ==="
-          ls -la
           echo "=== Contenu du dossier reports ==="
-          ls -la reports
+          ls -la reports/
 
       - name: Exécution du pipeline d'orchestration ChainGuard
         run: |
