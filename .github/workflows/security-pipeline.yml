@@ -60,7 +60,7 @@ jobs:
 
       - name: Générer une paire de clés Cosign (mode test)
         run: |
-          cosign generate-key-pair --output-key-prefix cosign
+          cosign generate-key-pair --output-key-prefix cosign --force
         env:
           COSIGN_PASSWORD: ""
 
