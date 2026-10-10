@@ -37,7 +37,7 @@ jobs:
       - name: Créer le dossier reports
         run: mkdir -p reports
 
-      - name: Lancer le pipeline de sécurité
+      - name: Lancer le pipeline de sécurité (Docker + Syft + Trivy)
         run: python run_pipeline.py
 
       - name: Sauvegarder les rapports de sécurité (Artifacts)
