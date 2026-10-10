@@ -46,16 +46,25 @@ jobs:
         run: |
           mkdir -p reports
           
-          # Génération d'une vraie paire de clés Cosign de test pour la validation
-          cosign generate-key-pair
-          # (Cela crée cosign.key et cosign.pub dans le répertoire courant sans mot de passe)
+          # Génération d'une paire de clés Cosign de test
+          cosign generate-key-pair --output-key-prefix cosign-key --yes || true
+          # Si les clés s'appellent cosign-key.key et cosign-key.pub, on les renomme ou on adapte :
+          if [ -f cosign-key.pub ]; then cp cosign-key.pub cosign.pub; fi
+          if [ -f cosign-key.key ]; then cp cosign-key.key cosign.key; fi
 
-          # Création des rapports minimums requis pour les Quality Gates
+          # Création des rapports requis
           echo '{"artifacts": []}' > reports/sbom.json
           echo '{"Results": []}' > reports/trivy-report.json
 
-          # Signature réelle du SBOM avec la clé générée pour passer la vérification Cosign
-          cosign sign-blob --key cosign.key --output-signature reports/sbom.json.sig reports/sbom.json
+          # Signature du SBOM avec gestion explicite
+          cosign sign-blob --key cosign.key --output-signature reports/sbom.json.sig reports/sbom.json --yes || echo "Erreur signature cosign"
+
+      - name: Debug - Vérification des fichiers générés
+        run: |
+          echo "=== Contenu de la racine ==="
+          ls -la
+          echo "=== Contenu du dossier reports ==="
+          ls -la reports
 
       - name: Exécution du pipeline d'orchestration ChainGuard
         run: |
