@@ -1,78 +1,81 @@
+# run_pipeline.py
 import subprocess
+import json
 import os
 import sys
-import json
-
 from app.evaluator import evaluate_artifact
-from app.summarizer import generate_markdown_summary
+from app.policy import DecisionStatus
+from app.summarizer import generate_summary_report
 
-def run_command(command):
-    print(f"Exécution : {command}")
-    result = subprocess.run(command, shell=True, capture_output=True, text=True, encoding='utf-8', errors='ignore')
-    print(result.stdout)
-    if result.returncode != 0:
-        print(f"Erreur : {result.stderr}")
-    return result.returncode, result.stdout
+def get_docker_image_digest(image_name: str) -> str:
+    """
+    Récupère l'identifiant immuable (Digest SHA-256) de l'image Docker construite.
+    """
+    try:
+        result = subprocess.run(
+            ["docker", "inspect", "--format='{{index .RepoDigests 0}}'", image_name],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        digest = result.stdout.strip().strip("'")
+        if "@sha256:" in digest:
+            return digest.split("@")[1]
+    except Exception:
+        try:
+            result = subprocess.run(
+                ["docker", "inspect", "--format='{{.Id}}'", image_name],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            return result.stdout.strip().strip("'")
+        except Exception as e:
+            print(f"[-] Erreur critique lors de la récupération du digest de l'image : {e}")
+            return ""
+    return ""
 
 def main():
+    print("==================================================")
+    print("[*] Lancement du pipeline ChainGuard Supply - DevSecOps")
+    print("==================================================")
+    
+    image_tag = "chainguard-app:latest"
+    
+    # 1. Capture du digest immuable de l'artefact évalué
+    digest = get_docker_image_digest(image_tag)
+    if not digest:
+        print("[-] Violation d'intégrité : Impossible de lier l'artefact à un identifiant immuable.")
+        generate_summary_report("DENY", "Violation Fail-Closed : Impossible de récupérer le digest de l'image.")
+        sys.exit(1)
+        
+    print(f"[+] Artefact identifié par son empreinte immuable : {digest}")
+    
+    # Consignation du manifeste de l'artefact
     os.makedirs("reports", exist_ok=True)
+    meta_path = "reports/artifact-meta.json"
+    with open(meta_path, "w", encoding="utf-8") as f:
+        json.dump({"image": image_tag, "digest": digest}, f, indent=2)
+
+    # 2. Exécution de l'évaluation unifiée (Politique SSOT + Fail-Closed + Cosign)
+    is_success, decision, reason = evaluate_artifact()
     
-    # 1. Build de l'image Docker sécurisée
-    code, _ = run_command("docker build -t chainguard-app:latest .")
-    if code != 0:
-        print("Erreur : Échec du build Docker.")
-        sys.exit(1)
+    print(f"[*] Décision finale calculée : {decision}")
+    print(f"[*] Motif : {reason}")
 
-    # 2. Récupération de l'ID unique de l'image pour la traçabilité
-    _, output_id = run_command("docker images --no-trunc --quiet chainguard-app:latest")
-    image_digest = f"sha256:{output_id.strip()}"
-    print(f"[*] Artefact lié au Digest : {image_digest}")
+    # 3. Génération du rapport de synthèse final
+    generate_summary_report(decision, reason)
 
-    # 3. Génération du SBOM via Trivy
-    if subprocess.run("trivy image --format cyclonedx -o reports/sbom.json chainguard-app:latest", shell=True).returncode != 0:
-        print("Erreur : Échec de la génération du SBOM.")
-        sys.exit(1)
-
-    # 4. Scan des vulnérabilités via Trivy
-    if subprocess.run("trivy image --format json -o reports/trivy-report.json chainguard-app:latest", shell=True).returncode != 0:
-        print("Erreur : Échec du scan Trivy.")
-        sys.exit(1)
-
-    # 5. Évaluation stricte via les Quality Gates
-    print("Évaluation des Quality Gates en cours...")
-    success, message = evaluate_artifact()
-    
-    # Génération du rapport de synthèse Markdown dans tous les cas
-    generate_markdown_summary()
-
-    if not success:
-        print(f"\n[BLOQUÉ] {message}")
+    # 4. Sortie normalisée du pipeline
+    if decision == DecisionStatus.ALLOW:
+        print("[+] Pipeline validé avec succès : Déploiement autorisé.")
+        sys.exit(0)
+    elif decision == DecisionStatus.REVIEW:
+        print("[!] Statut nécessitant une revue humaine (REVIEW).")
         sys.exit(2)
     else:
-        print(f"\n[SUCCÈS] {message}")
-
-    # 6. Gestion de Cosign (Signature et Vérification)
-    if subprocess.run("cosign version", shell=True, capture_output=True).returncode == 0:
-        if not os.path.exists("cosign.key"):
-            run_command("cosign generate-key-pair --output-key-prefix cosign")
-
-        print("Signature cryptographique du SBOM en cours...")
-        code, _ = run_command("cosign sign-blob --key cosign.key reports/sbom.json --output-signature reports/sbom.json.sig --yes")
-        if code != 0:
-            print("Erreur : Échec de la signature du SBOM.")
-            sys.exit(1)
-
-        print("Vérification de la signature cryptographique du SBOM...")
-        code, _ = run_command("cosign verify-blob --key cosign.pub --signature reports/sbom.json.sig reports/sbom.json")
-        if code != 0:
-            print("Erreur : La vérification de la signature du SBOM a échoué !")
-            sys.exit(3)
-        else:
-            print("[SUCCÈS] La signature cryptographique du SBOM est valide et authentique.")
-    else:
-        print("[AVERTISSEMENT] Cosign n'est pas détecté localement. Signature gérée par GitHub Actions.")
-
-    print("\nPipeline complet exécuté et validé avec succès !")
+        print("[-] Pipeline bloqué par la politique de sécurité (DENY).")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
