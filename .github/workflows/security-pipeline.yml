@@ -24,7 +24,7 @@ jobs:
           pip install pytest
 
       - name: Exécuter les tests unitaires
-        run: PYTHONPATH=. pytest
+        run: python -m pytest tests/
 
       - name: Installer Syft
         run: |
