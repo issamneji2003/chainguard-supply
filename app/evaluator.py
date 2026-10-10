@@ -1,43 +1,39 @@
 import json
 import os
+import pytest
+from app.evaluator import evaluate_artifact
 
-def evaluate_artifact():
-    report_path = "reports/trivy-report.json"
-    
-    if not os.path.exists(report_path):
-        return False, f"Rapport Trivy introuvable à l'emplacement : {report_path}"
+def create_mock_report(vulnerabilities):
+    os.makedirs("reports", exist_ok=True)
+    report_data = {
+        "Results": [
+            {
+                "Vulnerabilities": vulnerabilities
+            }
+        ]
+    }
+    with open("reports/trivy-report.json", "w", encoding="utf-8") as f:
+        json.dump(report_data, f)
 
-    try:
-        with open(report_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-    except Exception as e:
-        return False, f"Erreur lors de la lecture du rapport JSON : {str(e)}"
+def test_evaluator_blocks_critical():
+    create_mock_report([
+        {"VulnerabilityID": "CVE-CRIT", "Severity": "CRITICAL"}
+    ])
+    success, message = evaluate_artifact()
+    assert success is False
+    assert "CRITICAL" in message
 
-    critical_count = 0
-    high_count = 0
+def test_evaluator_blocks_too_many_high():
+    # Cas avec 51 failles high (au-dessus du nouveau seuil max de 50) -> Doit bloquer
+    vulns = [{"VulnerabilityID": f"CVE-{i}", "Severity": "HIGH"} for i in range(51)]
+    create_mock_report(vulns)
+    success, message = evaluate_artifact()
+    assert success is False
+    assert "HIGH" in message
 
-    # Analyse des résultats de Trivy (par cibles / résultats)
-    results = data.get("Results", [])
-    for target in results:
-        vulnerabilities = target.get("Vulnerabilities", [])
-        if vulnerabilities:
-            for vuln in vulnerabilities:
-                severity = vuln.get("Severity", "")
-                if severity == "CRITICAL":
-                    critical_count += 1
-                elif severity == "HIGH":
-                    high_count += 1
-
-    print(f"[*] Audit des Quality Gates : {critical_count} failles CRITICAL, {high_count} failles HIGH détectées.")
-
-    # Règles des Quality Gates renforcées :
-    # 1. Tolérance zéro sur les failles CRITICAL
-    if critical_count > 0:
-        return False, f"Échec Quality Gate : {critical_count} vulnérabilité(s) CRITICAL détectée(s). Déploiement bloqué."
-
-    # 2. Plafond sur les failles HIGH (ajusté à 50 pour l'image de base Python Slim)
-    MAX_HIGH_ALLOWED = 50
-    if high_count > MAX_HIGH_ALLOWED:
-        return False, f"Échec Quality Gate : {high_count} vulnérabilité(s) HIGH détectée(s) (Seuil max autorisé : {MAX_HIGH_ALLOWED}). Déploiement bloqué."
-
-    return True, "Toutes les Quality Gates ont été validées avec succès !"
+def test_evaluator_passes_within_limit():
+    # Cas avec 10 failles high (en dessous du seuil de 50) -> Doit passer
+    vulns = [{"VulnerabilityID": f"CVE-{i}", "Severity": "HIGH"} for i in range(10)]
+    create_mock_report(vulns)
+    success, message = evaluate_artifact()
+    assert success is True
