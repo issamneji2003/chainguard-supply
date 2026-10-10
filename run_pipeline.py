@@ -1,5 +1,9 @@
 import subprocess
 import os
+import sys
+
+# Import de la fonction d'évaluation (assure-toi que PYTHONPATH=. est actif)
+from app.evaluator import evaluate_artifact
 
 def run_command(command):
     print(f"Exécution : {command}")
@@ -11,16 +15,31 @@ def run_command(command):
 def main():
     os.makedirs("reports", exist_ok=True)
     
-    # 1. Builder l'image Docker locale
-    run_command("docker build -t chainguard-app:latest .")
+    # 1. Build de l'image Docker sécurisée
+    if run_command("docker build -t chainguard-app:latest .") != 0:
+        print("Erreur : Échec du build Docker.")
+        sys.exit(1)
 
-    # 2. Générer le SBOM directement depuis les fichiers sources (évite le bug Windows de Syft sur le daemon docker)
-    run_command("syft dir:. -o cyclonedx-json=reports/sbom.json")
+    # 2. Génération du SBOM via Syft
+    if run_command("syft dir:. -o cyclonedx-json=reports/sbom.json") != 0:
+        print("Erreur : Échec de la génération du SBOM.")
+        sys.exit(1)
 
-    # 3. Scanner l'image Docker via Trivy (qui lui fonctionne parfaitement avec l'image Docker)
-    run_command("trivy image --format json -o reports/trivy-report.json chainguard-app:latest")
+    # 3. Scan des vulnérabilités via Trivy
+    if run_command("trivy image --format json -o reports/trivy-report.json chainguard-app:latest") != 0:
+        print("Erreur : Échec du scan Trivy.")
+        sys.exit(1)
 
-    print("Pipeline exécuté avec succès !")
+    # 4. Évaluation stricte via les Quality Gates
+    print("Évaluation des Quality Gates en cours...")
+    success, message = evaluate_artifact()
+    
+    if not success:
+        print(f"\n[BLOQUÉ] {message}")
+        sys.exit(2) # Code d'erreur non nul pour stopper le pipeline CI/CD
+    else:
+        print(f"\n[SUCCÈS] {message}")
+        print("Pipeline exécuté et validé avec succès !")
 
 if __name__ == "__main__":
     main()

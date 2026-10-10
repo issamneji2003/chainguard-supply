@@ -1,32 +1,34 @@
-import json
 import os
+import json
 
-def evaluate_artifact(evidence):
-    """Évalue un artefact en fonction des preuves fournies (signature, SBOM, vulnérabilités)."""
-    if not evidence.get("sbom_present", True):
-        return "DENY", "SBOM manquant"
-    if not evidence.get("signed", True):
-        return "DENY", "Artefact non signé"
-    if evidence.get("critical_vulnerabilities", 0) > 0:
-        return "DENY", "Présence de vulnérabilités critiques"
-    return "ALLOW", "Artefact conforme"
-
-def evaluate_supply_chain():
+def evaluate_artifact():
+    """
+    Vérifie la présence du SBOM et analyse le rapport Trivy à la recherche de vulnérabilités CRITICAL.
+    Renvoie (True, "Message") si tout est OK, ou (False, "Raison du blocage") si la Quality Gate échoue.
+    """
     sbom_path = "reports/sbom.json"
     trivy_path = "reports/trivy-report.json"
 
+    # Porte 1 : Vérification du SBOM
     if not os.path.exists(sbom_path):
-        return "DENY: SBOM manquant !"
+        return False, "Quality Gate ÉCHOUÉE : SBOM manquant (sbom.json introuvable)."
 
+    # Porte 2 : Analyse des vulnérabilités Trivy
     if os.path.exists(trivy_path):
-        with open(trivy_path, "r") as f:
-            data = json.load(f)
-        
+        with open(trivy_path, "r", encoding="utf-8") as f:
+            try:
+                data = json.load(f)
+            except json.JSONDecodeError:
+                return False, "Quality Gate ÉCHOUÉE : Rapport Trivy corrompu ou mal formé."
+
         results = data.get("Results", [])
         for target in results:
             vulnerabilities = target.get("Vulnerabilities", [])
             for vuln in vulnerabilities:
-                if vuln.get("Severity") == "CRITICAL":
-                    return "DENY: Vulnérabilité CRITICAL détectée !"
-
-    return "ALLOW: Pipeline validé avec succès !"
+                severity = vuln.get("Severity")
+                if severity == "CRITICAL":
+                    vuln_id = vuln.get("VulnerabilityID", "UNKNOWN")
+                    pkg_name = vuln.get("PkgName", "UNKNOWN")
+                    return False, f"Quality Gate ÉCHOUÉE : Vulnérabilité CRITICAL détectée [{vuln_id}] sur le paquet '{pkg_name}'."
+    
+    return True, "Toutes les Quality Gates ont été validées avec succès !"
