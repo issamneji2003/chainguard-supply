@@ -6,15 +6,19 @@ on:
   pull_request:
     branches: [ main, master ]
 
+# 1. Application du principe du moindre privilège au niveau du job
+permissions:
+  contents: read
+
 jobs:
   security-check:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout du code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Configuration de Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b69f550a55abf95a4f # v5.3.0
         with:
           python-version: '3.10'
 
@@ -35,12 +39,23 @@ jobs:
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
 
       - name: Installer Cosign
-        uses: sigstore/cosign-installer@v3.5.0
+        uses: sigstore/cosign-installer@dc72c7d5c4d10ae6bcb8f7739fc6800fa1b0a5f2 # v3.7.0
 
       - name: Créer le dossier reports
         run: mkdir -p reports
 
-      - name: Lancer le pipeline de sécurité (Docker + Syft + Trivy + Quality Gates)
+      - name: Build de l'image Docker sécurisée
+        run: docker build -t chainguard-app:latest .
+
+      - name: Générer le SBOM depuis l'image Docker via Trivy
+        run: |
+          trivy image --format cyclonedx -o reports/sbom.json chainguard-app:latest
+
+      - name: Scanner les vulnérabilités via Trivy
+        run: |
+          trivy image --format json -o reports/trivy-report.json chainguard-app:latest
+
+      - name: Lancer le pipeline de sécurité (Quality Gates)
         run: python run_pipeline.py
 
       - name: Générer une paire de clés Cosign (mode test)
@@ -55,9 +70,13 @@ jobs:
         env:
           COSIGN_PASSWORD: ""
 
+      - name: Vérifier la signature cryptographique du SBOM
+        run: |
+          cosign verify-blob --key cosign.pub --signature reports/sbom.json.sig reports/sbom.json
+
       - name: Sauvegarder les rapports de sécurité et signatures (Artifacts)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf888 # v4.4.0
         with:
           name: chainguard-security-reports
           path: reports/

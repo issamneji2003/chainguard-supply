@@ -1,52 +1,43 @@
-import os
 import json
+import os
 
-def evaluate_artifact(evidence=None):
-    """
-    Évalue la conformité et la sécurité des artefacts.
-    Prend en charge soit un dictionnaire d'evidence (pour les tests unitaires),
-    soit une analyse des fichiers réels du dossier reports/.
-    """
-    # Si le dictionnaire d'evidence est fourni (par les tests unitaires)
-    if evidence is not None:
-        # Vérification des failles critiques
-        if evidence.get("critical_vulnerabilities", 0) > 0:
-            return "DENY", "Quality Gate ÉCHOUÉE : Vulnérabilité CRITICAL détectée."
-        
-        # Vérification de la présence du SBOM
-        if not evidence.get("sbom_present", True):
-            return "DENY", "Quality Gate ÉCHOUÉE : SBOM manquant."
-            
-        # Vérification de la signature (si exigée par les tests)
-        if not evidence.get("signed", True):
-            return "DENY", "Quality Gate ÉCHOUÉE : Artefact non signé."
-            
-        return "ALLOW", "Toutes les Quality Gates ont été validées avec succès !"
-
-    # Sinon, logique pour le pipeline réel (fichiers locaux)
-    sbom_path = "reports/sbom.json"
-    trivy_path = "reports/trivy-report.json"
-
-    # Porte 1 : Vérification du SBOM
-    if not os.path.exists(sbom_path):
-        return False, "Quality Gate ÉCHOUÉE : SBOM manquant (sbom.json introuvable)."
-
-    # Porte 2 : Analyse des vulnérabilités Trivy
-    if os.path.exists(trivy_path):
-        with open(trivy_path, "r", encoding="utf-8") as f:
-            try:
-                data = json.load(f)
-            except json.JSONDecodeError:
-                return False, "Quality Gate ÉCHOUÉE : Rapport Trivy corrompu ou mal formé."
-
-        results = data.get("Results", [])
-        for target in results:
-            vulnerabilities = target.get("Vulnerabilities", [])
-            for vuln in vulnerabilities:
-                severity = vuln.get("Severity")
-                if severity == "CRITICAL":
-                    vuln_id = vuln.get("VulnerabilityID", "UNKNOWN")
-                    pkg_name = vuln.get("PkgName", "UNKNOWN")
-                    return False, f"Quality Gate ÉCHOUÉE : Vulnérabilité CRITICAL détectée [{vuln_id}] sur le paquet '{pkg_name}'."
+def evaluate_artifact():
+    report_path = "reports/trivy-report.json"
     
+    if not os.path.exists(report_path):
+        return False, f"Rapport Trivy introuvable à l'emplacement : {report_path}"
+
+    try:
+        with open(report_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception as e:
+        return False, f"Erreur lors de la lecture du rapport JSON : {str(e)}"
+
+    critical_count = 0
+    high_count = 0
+
+    # Analyse des résultats de Trivy (par cibles / résultats)
+    results = data.get("Results", [])
+    for target in results:
+        vulnerabilities = target.get("Vulnerabilities", [])
+        if vulnerabilities:
+            for vuln in vulnerabilities:
+                severity = vuln.get("Severity", "")
+                if severity == "CRITICAL":
+                    critical_count += 1
+                elif severity == "HIGH":
+                    high_count += 1
+
+    print(f"[*] Audit des Quality Gates : {critical_count} failles CRITICAL, {high_count} failles HIGH détectées.")
+
+    # Règles des Quality Gates renforcées :
+    # 1. Tolérance zéro sur les failles CRITICAL
+    if critical_count > 0:
+        return False, f"Échec Quality Gate : {critical_count} vulnérabilité(s) CRITICAL détectée(s). Déploiement bloqué."
+
+    # 2. Plafond sur les failles HIGH (ajusté à 50 pour l'image de base Python Slim)
+    MAX_HIGH_ALLOWED = 50
+    if high_count > MAX_HIGH_ALLOWED:
+        return False, f"Échec Quality Gate : {high_count} vulnérabilité(s) HIGH détectée(s) (Seuil max autorisé : {MAX_HIGH_ALLOWED}). Déploiement bloqué."
+
     return True, "Toutes les Quality Gates ont été validées avec succès !"
