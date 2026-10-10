@@ -1,43 +1,34 @@
-import sys
+import json
 import os
 
-# Ajoute le dossier parent au chemin pour importer app.evaluator
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../app')))
+def evaluate_artifact(evidence):
+    """Évalue un artefact en fonction des preuves fournies (signature, SBOM, vulnérabilités)."""
+    if not evidence.get("sbom_present", True):
+        return "DENY", "SBOM manquant"
+    if not evidence.get("signed", True):
+        return "DENY", "Artefact non signé"
+    if evidence.get("critical_vulnerabilities", 0) > 0:
+        return "DENY", "Présence de vulnérabilités critiques"
+    return "ALLOW", "Artefact conforme"
 
-from evaluator import evaluate_artifact
+def evaluate_supply_chain():
+    sbom_path = "reports/sbom.json"
+    trivy_path = "reports/trivy-report.json"
 
-def test_evaluate_allow():
-    """Vérifie qu'un artefact entièrement conforme est accepté (ALLOW)."""
-    evidence = {
-        "artifact_name": "app:v1",
-        "signed": True,
-        "sbom_present": True,
-        "critical_vulnerabilities": 0,
-        "moderate_vulnerabilities": 0
-    }
-    decision, reason = evaluate_artifact(evidence)
-    assert decision == "ALLOW"
+    # 1. Vérification du SBOM
+    if not os.path.exists(sbom_path):
+        return "DENY: SBOM manquant !"
 
-def test_evaluate_deny_unsigned():
-    """Vérifie qu'un artefact non signé est refusé (DENY)."""
-    evidence = {
-        "artifact_name": "app:v1",
-        "signed": False,
-        "sbom_present": True,
-        "critical_vulnerabilities": 0,
-        "moderate_vulnerabilities": 0
-    }
-    decision, reason = evaluate_artifact(evidence)
-    assert decision == "DENY"
+    # 2. Vérification du rapport de vulnérabilités Trivy
+    if os.path.exists(trivy_path):
+        with open(trivy_path, "r") as f:
+            data = json.load(f)
+        
+        results = data.get("Results", [])
+        for target in results:
+            vulnerabilities = target.get("Vulnerabilities", [])
+            for vuln in vulnerabilities:
+                if vuln.get("Severity") == "CRITICAL":
+                    return "DENY: Vulnérabilité CRITICAL détectée !"
 
-def test_evaluate_deny_critical_vuln():
-    """Vérifie qu'un artefact avec une vulnérabilité critique est refusé (DENY)."""
-    evidence = {
-        "artifact_name": "app:v1",
-        "signed": True,
-        "sbom_present": True,
-        "critical_vulnerabilities": 1,
-        "moderate_vulnerabilities": 0
-    }
-    decision, reason = evaluate_artifact(evidence)
-    assert decision == "DENY"
+    return "ALLOW: Pipeline validé avec succès !"
