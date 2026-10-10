@@ -1,4 +1,5 @@
 # ChainGuard Supply 🛡️
+[![ChainGuard Security Pipeline](https://github.com/issamneji2003/chainguard-supply/actions/workflows/security-pipeline.yml/badge.svg)](https://github.com/issamneji2003/chainguard-supply/actions/workflows/security-pipeline.yml)
 
 **ChainGuard Supply** est un pipeline DevSecOps complet, automatisé et axé sur la sécurité de la chaîne d'approvisionnement logicielle (*Software Supply Chain Security*). Ce projet a été développé dans le cadre du cursus d'ingénieur en Cloud et Cybersécurité à l'ESPRIT.
 
