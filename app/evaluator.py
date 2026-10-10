@@ -1,57 +1,43 @@
 import json
 import os
-from unittest.mock import patch
-import unittest.mock
-from app.evaluator import evaluate_artifact
 
-def test_evaluator_blocks_critical():
-    mock_data = {
-        "Results": [
-            {
-                "Vulnerabilities": [
-                    {"Severity": "CRITICAL"},
-                    {"Severity": "HIGH"}
-                ]
-            }
-        ]
-    }
+def evaluate_artifact():
+    report_path = "reports/trivy-report.json"
     
-    with patch("os.path.exists", return_value=True), \
-         patch("builtins.open", unittest.mock.mock_open(read_data=json.dumps(mock_data))):
-        success, message = evaluate_artifact()
-        assert success is False
-        assert "CRITICAL" in message
+    if not os.path.exists(report_path):
+        return False, f"Rapport Trivy introuvable à l'emplacement : {report_path}"
 
-def test_evaluator_blocks_too_many_high():
-    # Simuler 51 failles HIGH pour dépasser le nouveau seuil MAX_HIGH_ALLOWED = 50
-    vulns = [{"Severity": "HIGH"} for _ in range(51)]
-    mock_data = {
-        "Results": [
-            {
-                "Vulnerabilities": vulns
-            }
-        ]
-    }
-    
-    with patch("os.path.exists", return_value=True), \
-         patch("builtins.open", unittest.mock.mock_open(read_data=json.dumps(mock_data))):
-        success, message = evaluate_artifact()
-        assert success is False  # Doit bloquer car 51 > 50
-        assert "HIGH" in message
+    try:
+        with open(report_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception as e:
+        return False, f"Erreur lors de la lecture du rapport JSON : {str(e)}"
 
-def test_evaluator_success_within_limits():
-    # Simuler un nombre acceptable de failles HIGH (ex: 10, ce qui est inférieur à 50)
-    vulns = [{"Severity": "HIGH"} for _ in range(10)]
-    mock_data = {
-        "Results": [
-            {
-                "Vulnerabilities": vulns
-            }
-        ]
-    }
-    
-    with patch("os.path.exists", return_value=True), \
-         patch("builtins.open", unittest.mock.mock_open(read_data=json.dumps(mock_data))):
-        success, message = evaluate_artifact()
-        assert success is True
-        assert "succès" in message
+    critical_count = 0
+    high_count = 0
+
+    # Analyse des résultats de Trivy (par cibles / résultats)
+    results = data.get("Results", [])
+    for target in results:
+        vulnerabilities = target.get("Vulnerabilities", [])
+        if vulnerabilities:
+            for vuln in vulnerabilities:
+                severity = vuln.get("Severity", "")
+                if severity == "CRITICAL":
+                    critical_count += 1
+                elif severity == "HIGH":
+                    high_count += 1
+
+    print(f"[*] Audit des Quality Gates : {critical_count} failles CRITICAL, {high_count} failles HIGH détectées.")
+
+    # Règles des Quality Gates renforcées :
+    # 1. Tolérance zéro sur les failles CRITICAL
+    if critical_count > 0:
+        return False, f"Échec Quality Gate : {critical_count} vulnérabilité(s) CRITICAL détectée(s). Déploiement bloqué."
+
+    # 2. Plafond sur les failles HIGH (ajusté à 50 pour l'image de base Python Slim)
+    MAX_HIGH_ALLOWED = 50
+    if high_count > MAX_HIGH_ALLOWED:
+        return False, f"Échec Quality Gate : {high_count} vulnérabilité(s) HIGH détectée(s) (Seuil max autorisé : {MAX_HIGH_ALLOWED}). Déploiement bloqué."
+
+    return True, "Toutes les Quality Gates ont été validées avec succès !"
