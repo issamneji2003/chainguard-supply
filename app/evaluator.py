@@ -1,28 +1,32 @@
 import json
 import os
 
+def evaluate_artifact(evidence):
+    """Évalue un artefact en fonction des preuves fournies (signature, SBOM, vulnérabilités)."""
+    if not evidence.get("sbom_present", True):
+        return "DENY", "SBOM manquant"
+    if not evidence.get("signed", True):
+        return "DENY", "Artefact non signé"
+    if evidence.get("critical_vulnerabilities", 0) > 0:
+        return "DENY", "Présence de vulnérabilités critiques"
+    return "ALLOW", "Artefact conforme"
+
 def evaluate_supply_chain():
     sbom_path = "reports/sbom.json"
     trivy_path = "reports/trivy-report.json"
-    
-    # 1. Vérification du SBOM
+
     if not os.path.exists(sbom_path):
         return "DENY: SBOM manquant !"
-        
-    # 2. Vérification du rapport de vulnérabilités Trivy
+
     if os.path.exists(trivy_path):
         with open(trivy_path, "r") as f:
             data = json.load(f)
-            
-            # On parcourt les résultats pour chercher des failles CRITICAL
-            results = data.get("Results", [])
-            for target in results:
-                vulnerabilities = target.get("Vulnerabilities", [])
-                for vuln in vulnerabilities:
-                    if vuln.get("Severity") == "CRITICAL":
-                        return "DENY: Vulnérabilité CRITIQUE détectée !"
-                        
-    return "ALLOW: Supply chain sécurisée !"
+        
+        results = data.get("Results", [])
+        for target in results:
+            vulnerabilities = target.get("Vulnerabilities", [])
+            for vuln in vulnerabilities:
+                if vuln.get("Severity") == "CRITICAL":
+                    return "DENY: Vulnérabilité CRITICAL détectée !"
 
-if __name__ == "__main__":
-    print(evaluate_supply_chain())
+    return "ALLOW: Pipeline validé avec succès !"
