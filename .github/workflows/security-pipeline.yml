@@ -19,12 +19,12 @@ jobs:
           python-version: '3.10'
 
       - name: Installer Syft
-        uses: anchore/sbom-action/download-syft@v0
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
 
       - name: Installer Trivy
-        uses: aquasecurity/setup-trivy@v0.2.0
-        with:
-          cache: true
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
 
       - name: Créer le dossier reports
         run: mkdir -p reports
